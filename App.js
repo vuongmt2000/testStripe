@@ -1,20 +1,30 @@
 // App.ts
-import {StripeProvider} from '@stripe/stripe-react-native';
+import {StripeProvider, useConfirmPayment} from '@stripe/stripe-react-native';
 import {useStripe} from '@stripe/stripe-react-native';
-import {Text, Alert, TouchableOpacity, View, Linking} from 'react-native';
+import {
+  Text,
+  Alert,
+  TouchableOpacity,
+  View,
+  Linking,
+  Modal,
+  Platform,
+} from 'react-native';
 import {Provider} from 'react-redux';
 import {store} from './src/store';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useState, useEffect} from 'react';
 
+var client_secret = '';
+
 export default function App() {
   return (
     <Provider store={store}>
       <StripeProvider
-        publishableKey="pk_test_51NdpgiK25O68wrkzze2wsggPPYFQ5RNRWqd3NKeowZLE4GaTMoR2PrJMgSyI6Gt7Yi6kI9Bsy1T0WOEnQOiWIgRc00rdm78NrB"
+        publishableKey="pk_live_NWAwnaHBojtjLi7q22WvpZaG00cTFpPzLD"
         merchantIdentifier="merchant.au.com.jmango.JMango360" // required for Apple Pay
-        urlScheme="testStripe" // required for 3D Secure and bank redirects
+        urlScheme="testStripe://testStripe" // required for 3D Secure and bank redirects
       >
         <PaymentScreen />
       </StripeProvider>
@@ -31,8 +41,10 @@ const storeData = async () => {
   }
 };
 function PaymentScreen() {
-  const {confirmPayment, initPaymentSheet, presentPaymentSheet} = useStripe();
+  const {initPaymentSheet, presentPaymentSheet} = useStripe();
+  const {confirmPayment} = useConfirmPayment();
   const [state, setState] = useState();
+  const [visible, setVisible] = useState(false);
   console.log('state outside', state);
 
   useEffect(() => {
@@ -41,14 +53,31 @@ function PaymentScreen() {
     storeData();
   }, []);
 
-  const onCreateOrder = async () => {};
+  const submit = async () => {
+    setVisible(false);
+    const response = await confirmPayment(client_secret, {
+      paymentMethodType: 'Ideal',
+      paymentMethodData: {
+        bankName: 'ing',
+      },
+    });
+    if (response.error) {
+      Alert.alert('Something went wrong');
+      return;
+    }
+  };
+  const modalCustomPayment = () => {
+    setVisible(true);
+  };
 
   async function onCheckout() {
     // 1. Create a payment intent
     const response = await axios.post(
-      'https://1931-118-70-16-17.ngrok-free.app/payments/intents',
+      'https://elbrus-stripe-agent.jmango360.com/stripe/payment-intent',
       {
-        amount: 10000,
+        appKey: '5aa6b7bc32d71613b8b03cbe',
+        jmAPIKey: 'da8179fa-3b7c-11ee-be56-0242ac120002',
+        platform: Platform.OS,
       },
     );
     console.log('response', response);
@@ -56,12 +85,13 @@ function PaymentScreen() {
       Alert.alert('Something went wrong');
       return;
     }
-
+    client_secret = response.data.client_secret;
     // 2. Initialize the Payment sheet
     const initResponse = await initPaymentSheet({
-      merchantDisplayName: 'test.vuong.com',
-      paymentIntentClientSecret: response.data.paymentIntent,
+      merchantDisplayName: 'merchant.au.com.jmango.JMango360',
+      paymentIntentClientSecret: response.data.client_secret,
       allowsDelayedPaymentMethods: true,
+      returnURL: 'testStripe://testStripe',
     });
     if (initResponse.error) {
       console.log(initResponse.error);
@@ -79,6 +109,9 @@ function PaymentScreen() {
       );
       return;
     }
+
+    // 3. custom payment method
+    // modalCustomPayment();
   }
 
   const getData = async () => {
@@ -114,6 +147,23 @@ function PaymentScreen() {
         onPress={getData}>
         <Text style={{color: 'white'}}>show data</Text>
       </TouchableOpacity>
+      <Modal style={{flex: 1, backgroundColor: 'red'}} visible={visible}>
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <Text>payments</Text>
+          <Text>ING bank</Text>
+          <TouchableOpacity
+            onPress={submit}
+            style={{
+              height: 30,
+              width: 60,
+              backgroundColor: 'blue',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+            <Text>Submit</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
